@@ -103,8 +103,10 @@ export class DrillTheThrillMath extends PlatformMath {
         }];
 
         this.conditions["FreespinTrigger"] = { id:"freespin", symbol:10, minCount:3 };
+        this.conditions["HoldSpin"] = { id:"holdspin", symbol:11, minCount:1 };
 
         this.actions["respin"] = { triggers: ["respin"], id: "respin", spins: 3 };
+        this.actions["freerespin"] = { triggers: ["freerespin"], id: "freerespin", spins: 3 };
         this.actions["FreespinTrigger"] = { triggers: ["freespin"], id: "freespin", spins: 6 };
         this.actions["FreespinReTrigger"] = { triggers: ["retrigger"], id: "retrigger", spins: 6 };
 

@@ -65,8 +65,9 @@ export class GameServer extends BaseSlotGame {
         state.features = [];
 
         const respin: SlotFeaturesState = new SlotFeaturesState();
-        respin.isActive = ( wilds.numlist.length > 1 ||  (wilds.numlist.length > 0 && wilds.numlist[0] == 1) );
-        respin.id = "respin";
+        respin.isActive = ( wilds.numlist.length == 2 );
+        respin.id = "holdspin";
+        respin.offsets = Grid.FindScatterOffsets( 11, state.finalGrid);
         respin.symbol = 11;
         respin.triggers = ["respin"];
         state.features.push( respin);
@@ -139,9 +140,12 @@ export class GameServer extends BaseSlotGame {
 
 
         const freeRespin: SlotFeaturesState = new SlotFeaturesState();
-        freeRespin.isActive = ( wilds.numlist.length > 1 ||  (wilds.numlist.length > 0 && wilds.numlist[0] == 1) );
+        freeRespin.isActive = ( wilds.numlist.length == 2 );
 
-        if( !freeRespin.isActive) {
+        if( freeRespin.isActive) {
+            Triggerer.UpdateFeature(this.state, freeRespin, this.math.actions["freerespin"]); 
+            Triggerer.UpdateNextAction( this.state, this.math.actions["freerespin"]);
+        } else {
             const coinprize: SlotFeaturesState = CashPrize.consecutiveCoinPrize( state.finalGrid, this.state as DrillTheThrillState, BigNumber(this.state.gameStatus.totalBet));
             state.win = state.win.plus( coinprize.pay); 
             state.features = [coinprize ];
@@ -167,14 +171,17 @@ export class GameServer extends BaseSlotGame {
         const prevState :SlotSpinState = this.state.respins.length === 0 ? this.state.paidSpin[0] : this.state.respins[this.state.respins.length-1][0]
         let state:SlotSpinState = new SlotSpinState();
 
-        const selectedSet:any = RandomHelper.GetRandomFromList( this.rng, this.math.reSpinReels );
+        const selectedSet: any = RandomHelper.GetRandomFromList( this.rng, this.math.reSpinReels );
         state.reelId = selectedSet.id;
         state.initialGrid = CreateGrid.WeightedSymbolGrid( this.rng, selectedSet.symbols, this.math.info.gridLayout);
+        state.initialGrid[ 0].fill( 0);
+        state.initialGrid[ 4].fill( 0);
+
         state.finalGrid = Grid.UpdateSymbolsInOffsetsWithPrevGrid(prevState.features[0].offsets, state.initialGrid,  prevState.finalGrid)
         state.wins = [];
         state.win = BigNumber(0);
 
-        const coins:SlotFeaturesState = ScatterSymbolCount.checkCondition( this.math.conditions["HoldSpin"], state);
+        const coins: SlotFeaturesState = ScatterSymbolCount.checkCondition( this.math.conditions["HoldSpin"], state);
         CashPrize.CoinsMultiplier( this.rng, state.finalGrid, this.state as DrillTheThrillState, this.math as DrillTheThrillMath );
 
         const maxCoins = state.finalGrid[1].length + state.finalGrid[2].length + state.finalGrid[2].length;
@@ -186,8 +193,61 @@ export class GameServer extends BaseSlotGame {
             UpdateFeature.updateReSpinCount( this.state);
             if ( this.state.respin.left === 0 || coins.offsets.length === maxCoins) {
                 this.state.respin.left = 0;
-                this.state.gameStatus.nextAction = ["spin"];
+
+                const freespins: SlotFeaturesState = ScatterSymbolCount.checkCondition( this.math.conditions["FreespinTrigger"], this.state.paidSpin[0]);
+                if (freespins.isActive) {
+                    Triggerer.UpdateFeature(this.state, freespins, this.math.actions["FreespinTrigger"]);
+                    Triggerer.UpdateNextAction( this.state, this.math.actions["FreespinTrigger"]); 
+                } else {
+                    this.state.gameStatus.nextAction = ["spin"];
+                }
                 
+                CashPrize.CalculateMultiplier( this.state as DrillTheThrillState, state);
+                state.win = BigNumber(state.multiplier).multipliedBy( this.state.gameStatus.totalBet);
+            }
+        }
+        
+        this.state.gameStatus.currentWin = state.win;
+        this.state.gameStatus.totalWin = BigNumber(this.state.gameStatus.totalWin).plus( state.win);
+        coins.isActive = true;
+
+        state.features = [coins ];
+        this.state.respins.push( [state] );
+
+    }
+
+    protected executeFreeReSpin () {
+        const prevState :SlotSpinState = this.state.freerespins.length === 0 
+                                            ? this.state.freespins [this.state.freespins.length-1] [0] 
+                                            : this.state.freerespins [this.state.freerespins.length-1] [0]
+        
+        let state:SlotSpinState = new SlotSpinState();
+
+        const selectedSet: any = RandomHelper.GetRandomFromList( this.rng, this.math.reSpinReels );
+        state.reelId = selectedSet.id;
+        state.initialGrid = CreateGrid.WeightedSymbolGrid( this.rng, selectedSet.symbols, this.math.info.gridLayout);
+        state.initialGrid[ 0].fill( 0);
+        state.initialGrid[ 4].fill( 0);
+
+        state.finalGrid = Grid.UpdateSymbolsInOffsetsWithPrevGrid(prevState.features[0].offsets, state.initialGrid,  prevState.finalGrid)
+        state.wins = [];
+        state.win = BigNumber(0);
+
+        const coins: SlotFeaturesState = ScatterSymbolCount.checkCondition( this.math.conditions["HoldSpin"], state);
+        CashPrize.CoinsMultiplier( this.rng, state.finalGrid, this.state as DrillTheThrillState, this.math as DrillTheThrillMath );
+
+        const maxCoins = state.finalGrid[1].length + state.finalGrid[2].length + state.finalGrid[2].length;
+
+        coins.isActive = (coins.offsets.length > prevState.features[0].offsets.length ) && coins.offsets.length < maxCoins;
+        if (coins.isActive) {
+            Triggerer.UpdateFeature(this.state, coins, this.math.actions["freerespin"]); 
+        } else {
+            UpdateFeature.updateReSpinCount( this.state);
+            if ( this.state.respin.left === 0 || coins.offsets.length === maxCoins) {
+                this.state.respin.left = 0;
+
+                this.state.gameStatus.nextAction = ["spin"];
+
                 CashPrize.CalculateMultiplier( this.state as DrillTheThrillState, state);
                 state.win = BigNumber(state.multiplier).multipliedBy( this.state.gameStatus.totalBet);
             }
